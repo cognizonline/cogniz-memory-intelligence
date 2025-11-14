@@ -10,24 +10,31 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import DBSCAN
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
-import mysql.connector
 import json
 import os
 import hashlib
 from datetime import datetime, timedelta
+
+# Optional MySQL support (not required for API-only mode)
+try:
+    import mysql.connector
+    MYSQL_AVAILABLE = True
+except ImportError:
+    MYSQL_AVAILABLE = False
+    print("MySQL connector not available - running in API-only mode")
 
 app = FastAPI(title="Memory Intelligence Service", version="1.0.0")
 
 # Load local embedding model (22MB, fast!)
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Database configuration
+# Database configuration (optional)
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
     'user': os.getenv('DB_USER', 'root'),
     'password': os.getenv('DB_PASSWORD', ''),
     'database': os.getenv('DB_NAME', 'wordpress'),
-}
+} if MYSQL_AVAILABLE else None
 
 class Memory(BaseModel):
     memory_id: str
@@ -79,7 +86,12 @@ class ConsolidateResult(BaseModel):
     original_token_count: int
 
 def get_db_connection():
-    """Get MySQL database connection"""
+    """Get MySQL database connection (optional)"""
+    if not MYSQL_AVAILABLE or DB_CONFIG is None:
+        raise HTTPException(
+            status_code=501,
+            detail="Database not configured. Service running in API-only mode."
+        )
     return mysql.connector.connect(**DB_CONFIG)
 
 @app.get("/")
