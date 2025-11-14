@@ -25,8 +25,17 @@ except ImportError:
 
 app = FastAPI(title="Memory Intelligence Service", version="1.0.0")
 
-# Load local embedding model (22MB, fast!)
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Global model instance (lazy loaded to save memory)
+model = None
+
+def get_model():
+    """Lazy load model only when needed to reduce initial memory footprint"""
+    global model
+    if model is None:
+        # Use smallest model that still gives good results
+        # paraphrase-MiniLM-L3-v2 is ~60MB (vs 250MB for L6)
+        model = SentenceTransformer('paraphrase-MiniLM-L3-v2')
+    return model
 
 # Database configuration (optional)
 DB_CONFIG = {
@@ -107,8 +116,8 @@ async def root():
 async def health_check():
     """Health check endpoint"""
     try:
-        # Test model
-        test_embedding = model.encode(["test"])
+        # Test model (will lazy load if not loaded yet)
+        test_embedding = get_model().encode(["test"])
 
         # Test database (optional - don't fail if DB not configured)
         db_status = "not_configured"
@@ -159,9 +168,9 @@ async def check_duplicate(request: DuplicateCheck):
             )
 
         # Generate embeddings
-        new_embedding = model.encode([request.new_memory.content])
+        new_embedding = get_model().encode([request.new_memory.content])
         existing_contents = [m['original_content'] for m in existing_memories]
-        existing_embeddings = model.encode(existing_contents)
+        existing_embeddings = get_model().encode(existing_contents)
 
         # Calculate similarities
         similarities = cosine_similarity(new_embedding, existing_embeddings)[0]
@@ -226,7 +235,7 @@ async def cluster_memories(request: ClusterRequest):
 
         # Generate embeddings
         contents = [m['original_content'] for m in memories]
-        embeddings = model.encode(contents)
+        embeddings = get_model().encode(contents)
 
         # Cluster using DBSCAN
         clustering = DBSCAN(eps=1.0 - request.min_similarity, min_samples=2, metric='cosine')
@@ -626,7 +635,7 @@ async def analyze_duplicates(request: DuplicateAnalysisRequest):
 
         # Generate embeddings for all memories
         contents = [m.content for m in request.memories]
-        embeddings = model.encode(contents)
+        embeddings = get_model().encode(contents)
 
         # Find duplicates by comparing all pairs
         duplicates = []
@@ -683,7 +692,7 @@ async def analyze_clusters(request: ClusterAnalysisRequest):
 
         # Generate embeddings for all memories
         contents = [m.content for m in request.memories]
-        embeddings = model.encode(contents)
+        embeddings = get_model().encode(contents)
 
         # Convert sensitivity to eps parameter for DBSCAN
         # sensitivity 0.70 = very loose clustering (eps = 0.30)
