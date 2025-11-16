@@ -113,8 +113,9 @@ async def root():
     }
 
 @app.get("/health")
+@app.head("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint (supports GET and HEAD for Render health checks)"""
     try:
         # Test model (will lazy load if not loaded yet)
         test_embedding = get_model().encode(["test"])
